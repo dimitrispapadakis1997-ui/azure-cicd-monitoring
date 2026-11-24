@@ -36,3 +36,7 @@ The workflow requests a short-lived OIDC token from GitHub and exchanges it for 
 ## Cost
 
 The subscription is a free account with a limited credit and is never upgraded to pay-as-you-go, so Azure cannot charge a card. Everything here is free or near free, and the budget is the second layer: it warns before the credit is gone.
+
+## How this was built
+
+I built this with an AI assistant (Claude) to speed up writing code and documentation. I chose the design, set the constraints (cost, security, approval gate), approved the production deployments, and checked the results in Azure and GitHub. The progress log records the problems that came up and how they were fixed.
