@@ -1,0 +1,111 @@
+name: terraform
+
+on:
+  pull_request:
+    paths: ["envs/**", ".github/workflows/terraform.yml"]
+  push:
+    branches: [main]
+    paths: ["envs/**", ".github/workflows/terraform.yml"]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+env:
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
+
+jobs:
+  scan:
+    name: security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: envs
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+
+  plan:
+    name: plan (${{ matrix.env }})
+    needs: scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [governance, monitoring]
+    defaults:
+      run:
+        working-directory: envs/${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - run: terraform fmt -check -recursive
+      - name: Init
+        run: >
+          terraform init
+          -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}"
+          -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+      - run: terraform validate
+      - name: Plan
+        run: |
+          terraform plan -out=tfplan
+          terraform show -no-color tfplan > plan.txt
+      - name: Comment plan on pull request
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          ENV_NAME: ${{ matrix.env }}
+        with:
+          script: |
+            const fs = require('fs');
+            const plan = fs.readFileSync(`envs/${process.env.ENV_NAME}/plan.txt`, 'utf8').slice(0, 60000);
+            const body = `### Terraform plan: \`${process.env.ENV_NAME}\`\n\n\`\`\`\n${plan}\n\`\`\``;
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plan-${{ matrix.env }}
+          path: envs/${{ matrix.env }}/tfplan
+
+  apply:
+    name: apply (needs approval)
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.9.8
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: plan-*
+          path: plans
+      - name: Apply saved plans
+        run: |
+          for env in governance monitoring; do
+            cd "$GITHUB_WORKSPACE/envs/$env"
+            terraform init \
+              -backend-config="resource_group_name=${{ vars.TFSTATE_RESOURCE_GROUP }}" \
+              -backend-config="storage_account_name=${{ vars.TFSTATE_STORAGE_ACCOUNT }}"
+            terraform apply -auto-approve "$GITHUB_WORKSPACE/plans/plan-$env/tfplan"
+          done
