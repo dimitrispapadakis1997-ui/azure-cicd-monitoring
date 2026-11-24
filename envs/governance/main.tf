@@ -9,7 +9,7 @@ terraform {
   }
 
   # resource_group_name and storage_account_name are passed with
-  # -backend-config at init time (see .github/workflows/governance.yml).
+  # -backend-config at init time (see .github/workflows/terraform.yml).
   backend "azurerm" {
     container_name   = "tfstate"
     key              = "governance.tfstate"
