@@ -14,6 +14,16 @@ A GitHub Actions pipeline for Terraform on Azure, with security scanning, an app
 
 `.github/workflows/drift.yml` runs every morning and on demand. It plans each environment and fails if real infrastructure no longer matches the code.
 
+## What it looks like
+
+The plan posted as a comment on a pull request:
+
+![Terraform plan comments on a pull request](docs/images/pr-plan-comment.png)
+
+A run on `main`: security scan, plans for both environments, then the apply that waited for approval:
+
+![Pipeline run with scan, plan and approved apply](docs/images/pipeline-run.png)
+
 ## What it manages
 
 - **`envs/governance`**: a monthly subscription budget (NOK 200) with email alerts at 50% and 90% of actual spend and when the forecast passes 100%.
