@@ -28,13 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Trivy config scan
-        uses: aquasecurity/trivy-action@v0.33.1
-        with:
-          scan-type: config
-          scan-ref: envs
-          severity: HIGH,CRITICAL
-          exit-code: "1"
+      - name: Checkov security scan
+        run: pip install --quiet checkov && checkov -d envs --framework terraform --quiet
 
   plan:
     name: plan (${{ matrix.env }})
